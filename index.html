@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>早餐揪團結單小幫手</title>
+  <title>早餐多人即時揪團小幫手</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- FontAwesome Icons -->
@@ -24,19 +24,45 @@
           <i class="fa-solid fa-burger text-lg"></i>
         </div>
         <div>
-          <h1 class="text-base font-bold text-slate-800 leading-tight">早餐揪團訂單</h1>
-          <p class="text-xs text-slate-400">手機點餐・多人彙總</p>
+          <h1 class="text-base font-bold text-slate-800 leading-tight">早餐即時揪團</h1>
+          <p id="cloud-status" class="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-slate-300"></span> 檢查雲端房間中...
+          </p>
         </div>
       </div>
-      <button type="button" onclick="openMenuSettingsModal()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-full font-medium transition flex items-center gap-1 active:scale-95">
-        <i class="fa-solid fa-sliders"></i>
-        <span>常用菜單</span>
-      </button>
+      <div class="flex items-center gap-1.5">
+        <button type="button" onclick="manualSync()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 p-2 rounded-full transition active:scale-95" title="立即強制同步">
+          <i id="sync-icon" class="fa-solid fa-rotate"></i>
+        </button>
+        <button type="button" onclick="openMenuSettingsModal()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-full font-medium transition flex items-center gap-1 active:scale-95">
+          <i class="fa-solid fa-sliders"></i>
+          <span>菜單</span>
+        </button>
+      </div>
     </div>
   </header>
 
   <!-- 主內容容器 -->
   <main class="max-w-md mx-auto px-3.5 pt-3">
+
+    <!-- 雲端房間連線橫幅 -->
+    <div id="room-banner" class="bg-orange-50 border border-orange-200 rounded-2xl p-3 mb-3 text-xs flex items-center justify-between">
+      <div>
+        <div class="font-bold text-orange-950 flex items-center gap-1">
+          <i class="fa-solid fa-tower-broadcast text-orange-500"></i>
+          <span>房間：<span id="room-id-display" class="font-mono text-orange-600">未連線</span></span>
+        </div>
+        <p class="text-[11px] text-orange-800/80 mt-0.5">傳送此房連結，大家即可同時點餐彙整</p>
+      </div>
+      <div class="flex gap-1.5">
+        <button type="button" onclick="createCloudRoom()" class="px-2.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-semibold shadow-xs active:scale-95 transition">
+          開新房
+        </button>
+        <button type="button" id="copy-link-btn" onclick="copyRoomLink()" class="hidden px-2.5 py-1.5 bg-white border border-orange-300 text-orange-800 rounded-xl font-semibold active:scale-95 transition">
+          複製連結
+        </button>
+      </div>
+    </div>
 
     <!-- 頁籤切換 -->
     <div class="flex bg-slate-200/80 p-1 rounded-2xl mb-4">
@@ -58,15 +84,13 @@
     <!-- ================= 頁面 1: 登記點餐區 ================= -->
     <section id="view-order" class="space-y-4">
       <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-        <!-- 點餐人 -->
         <div class="mb-4">
           <label class="block text-xs font-semibold text-slate-500 mb-1.5">
             <i class="fa-solid fa-user text-orange-500 mr-1"></i>你的名字 / 稱呼 <span class="text-rose-500">*</span>
           </label>
-          <input type="text" id="order-userName" placeholder="例如：Leo、Alex、小美" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white transition" />
+          <input type="text" id="order-userName" placeholder="例如：Leo、小美、Alex" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white transition" />
         </div>
 
-        <!-- 常用推薦 -->
         <div class="mb-4">
           <div class="flex justify-between items-center mb-2">
             <span class="text-xs font-semibold text-slate-500">
@@ -77,7 +101,6 @@
           <div id="quick-menu-chips" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto no-scrollbar pb-1"></div>
         </div>
 
-        <!-- 當前已選項目列表 -->
         <div class="border-t border-slate-100 pt-3">
           <div class="flex justify-between items-center mb-2">
             <span class="text-xs font-semibold text-slate-700">本次選購餐點</span>
@@ -94,7 +117,6 @@
           </div>
         </div>
 
-        <!-- 本次小計與送出 -->
         <div class="mt-5 pt-3 border-t border-dashed border-slate-200 flex items-center justify-between">
           <div>
             <div class="text-[11px] text-slate-400">本次個人金額</div>
@@ -105,8 +127,8 @@
               取消修改
             </button>
             <button type="button" onclick="submitColleagueOrder()" id="submit-order-btn" class="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl shadow-md shadow-orange-500/25 active:scale-95 transition text-sm flex items-center gap-1.5 cursor-pointer">
-              <i class="fa-solid fa-paper-plane text-xs"></i>
-              <span>送出登記</span>
+              <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
+              <span>送出登記並同步</span>
             </button>
           </div>
         </div>
@@ -115,31 +137,8 @@
 
     <!-- ================= 頁面 2: 同事清單區 ================= -->
     <section id="view-list" class="hidden space-y-3">
-      <!-- 快捷代碼同步工具區 -->
-      <div class="bg-amber-50 border border-amber-200/70 rounded-2xl p-3 text-xs space-y-2">
-        <div class="font-bold text-amber-900 flex items-center justify-between">
-          <span class="flex items-center gap-1.5">
-            <i class="fa-solid fa-arrows-rotate text-amber-600"></i> 多人跨手機同步小工具
-          </span>
-          <button type="button" onclick="toggleSyncBox()" class="text-amber-700 underline text-[11px]">展開/收合</button>
-        </div>
-        <div id="sync-tools-box" class="space-y-2 pt-1 hidden">
-          <p class="text-amber-800 text-[11px] leading-relaxed">
-            同事在各自手機點好後，可點「分享我的餐點字串」貼到 LINE 群；主揪點「貼上並匯入」即可瞬間將所有人合併在一起！
-          </p>
-          <div class="flex gap-2">
-            <button type="button" onclick="exportLatestOrder()" class="flex-1 py-1.5 bg-white border border-amber-300 rounded-lg text-amber-800 font-semibold hover:bg-amber-100 transition active:scale-95">
-              複製我的單一餐點字串
-            </button>
-            <button type="button" onclick="importFromPrompt()" class="flex-1 py-1.5 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition active:scale-95">
-              主揪貼上匯入
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div class="flex justify-between items-center px-1">
-        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">已登記點餐名單</h2>
+        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">大家點的餐點 (即時同步)</h2>
         <span id="colleague-count-text" class="text-xs text-slate-500">共 0 位同事</span>
       </div>
 
@@ -147,8 +146,8 @@
 
       <div id="empty-list-hint" class="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-100">
         <i class="fa-solid fa-user-clock text-4xl mb-3 text-slate-300"></i>
-        <p class="text-sm font-medium text-slate-600">目前還沒有人填寫</p>
-        <p class="text-xs text-slate-400 mt-1">請切換到「登記點餐」送出您的餐點！</p>
+        <p class="text-sm font-medium text-slate-600">目前房間內還沒有訂單</p>
+        <p class="text-xs text-slate-400 mt-1">其他人送出後，這裡會每 3 秒自動更新！</p>
       </div>
     </section>
 
@@ -174,9 +173,9 @@
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-1.5">
             <span class="w-2 h-4 bg-orange-500 rounded-full"></span>
-            <h3 class="text-sm font-bold text-slate-800">向店家點餐彙整表</h3>
+            <h3 class="text-sm font-bold text-slate-800">打電話給店家用的彙整清單</h3>
           </div>
-          <span class="text-[11px] text-slate-400 font-medium">同名同備註已合併</span>
+          <span class="text-[11px] text-slate-400 font-medium">同名同備註已自動加總</span>
         </div>
         
         <div class="overflow-hidden rounded-xl border border-slate-100">
@@ -198,7 +197,7 @@
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-1.5">
             <span class="w-2 h-4 bg-amber-500 rounded-full"></span>
-            <h3 class="text-sm font-bold text-slate-800">各同事應付分攤表</h3>
+            <h3 class="text-sm font-bold text-slate-800">各同事應付分攤金額</h3>
           </div>
         </div>
         <div id="summary-colleagues-list" class="space-y-2 text-xs"></div>
@@ -213,7 +212,7 @@
 
         <button type="button" onclick="confirmClearAll()" class="w-full py-3 bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-600 font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 transition active:scale-95">
           <i class="fa-solid fa-trash-can"></i>
-          <span>清空今日全部訂單</span>
+          <span>清空今日房間訂單</span>
         </button>
       </div>
     </section>
@@ -252,7 +251,6 @@
   </div>
 
   <script>
-    // 預設快捷清單
     var DEFAULT_PRESETS = [
       { id: '1', name: '原味蛋餅', price: 30 },
       { id: '2', name: '培根蛋吐司', price: 45 },
@@ -265,42 +263,171 @@
       { id: '9', name: '卡啦雞腿堡', price: 65 }
     ];
 
-    var STORAGE_KEY_PRESETS = 'bf_presets_v4';
-    var STORAGE_KEY_ORDERS = 'bf_orders_v4';
-
     var orders = [];
     var presets = [];
     var currentCart = [];
     var editingOrderId = null;
+    var currentRoomId = null;
+    var syncTimer = null;
+    var isPushing = false;
 
-    // 初始化
+    // 公開零設定雲端中繼端點 (JSONBlob)
+    var CLOUD_API_BASE = 'https://jsonblob.com/api/jsonBlob';
+
     window.addEventListener('DOMContentLoaded', function() {
-      try {
-        var savedName = localStorage.getItem('bf_name_v4');
-        if (savedName) document.getElementById('order-userName').value = savedName;
+      var savedName = localStorage.getItem('bf_my_name');
+      if (savedName) document.getElementById('order-userName').value = savedName;
 
-        var savedPresets = localStorage.getItem(STORAGE_KEY_PRESETS);
-        presets = savedPresets ? JSON.parse(savedPresets) : DEFAULT_PRESETS.slice();
-
-        var savedOrders = localStorage.getItem(STORAGE_KEY_ORDERS);
-        orders = savedOrders ? JSON.parse(savedOrders) : [];
-      } catch (err) {
-        presets = DEFAULT_PRESETS.slice();
-        orders = [];
-      }
+      var savedPresets = localStorage.getItem('bf_presets_v5');
+      presets = savedPresets ? JSON.parse(savedPresets) : DEFAULT_PRESETS.slice();
 
       renderQuickMenuChips();
       renderCurrentCart();
-      updateBadge();
+
+      // 檢查網址是否有帶 room 參數 (例如: ?room=123456)
+      var params = new URLSearchParams(window.location.search);
+      var roomParam = params.get('room');
+
+      if (roomParam) {
+        joinCloudRoom(roomParam);
+      } else {
+        // 檢查上次使用的房間
+        var lastRoom = localStorage.getItem('bf_last_room');
+        if (lastRoom) {
+          joinCloudRoom(lastRoom);
+        } else {
+          document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span> 尚未加入房間 (請點開新房)';
+        }
+      }
     });
 
-    function saveOrders() {
-      try {
-        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
-      } catch (e) {}
-      updateBadge();
+    // ==========================================
+    // 雲端房間連線機制 (免任何帳號密碼)
+    // ==========================================
+    function createCloudRoom() {
+      if (orders.length > 0 && !confirm('開新房間將建立全新的今日團購，確定嗎？')) return;
+
+      var statusElem = document.getElementById('cloud-status');
+      statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> 正在建立雲端房間...';
+
+      var initialData = { orders: [] };
+
+      fetch(CLOUD_API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(initialData)
+      })
+      .then(function(res) {
+        var loc = res.headers.get('Location') || '';
+        var parts = loc.split('/');
+        var blobId = parts[parts.length - 1];
+        if (!blobId) throw new Error('未能取得房間 ID');
+        return blobId;
+      })
+      .then(function(newId) {
+        // 更新網址與加入房間
+        var newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + newId;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+        joinCloudRoom(newId);
+        alert('🎉 雲端房間已建立！\n請點擊上方「複製連結」傳給同事，大家就能同時點餐了！');
+      })
+      .catch(function(err) {
+        console.error(err);
+        alert('建立雲端房間失敗，請確認網路連線是否正常。');
+        statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> 建立失敗';
+      });
     }
 
+    function joinCloudRoom(roomId) {
+      currentRoomId = roomId;
+      localStorage.setItem('bf_last_room', roomId);
+      document.getElementById('room-id-display').innerText = '#' + roomId.substring(0, 8);
+      document.getElementById('copy-link-btn').classList.remove('hidden');
+
+      // 啟動定時輪詢 (每 3 秒自動抓取雲端最新訂單)
+      if (syncTimer) clearInterval(syncTimer);
+      fetchCloudOrders();
+      syncTimer = setInterval(fetchCloudOrders, 3000);
+    }
+
+    function fetchCloudOrders() {
+      if (!currentRoomId || isPushing) return;
+
+      fetch(CLOUD_API_BASE + '/' + currentRoomId, {
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(function(res) {
+        if (!res.ok) throw new Error('雲端狀態非 OK');
+        return res.json();
+      })
+      .then(function(data) {
+        if (data && Array.isArray(data.orders)) {
+          orders = data.orders;
+          updateBadge();
+          renderColleagueList();
+          renderSummaryView();
+          document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 雲端連線中 (即時同步)';
+        }
+      })
+      .catch(function() {
+        document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span> 同步重試中...';
+      });
+    }
+
+    function pushOrdersToCloud(onSuccess) {
+      if (!currentRoomId) {
+        alert('尚未建立或加入房間！請先點擊上方「開新房」。');
+        return;
+      }
+
+      isPushing = true;
+      var statusElem = document.getElementById('cloud-status');
+      statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> 正在同步至雲端...';
+
+      fetch(CLOUD_API_BASE + '/' + currentRoomId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: orders })
+      })
+      .then(function(res) {
+        if (!res.ok) throw new Error('上傳失敗');
+        isPushing = false;
+        statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> 同步成功';
+        if (onSuccess) onSuccess();
+      })
+      .catch(function() {
+        isPushing = false;
+        alert('雲端同步失敗，請檢查網路連線後再試一次！');
+        statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> 同步中斷';
+      });
+    }
+
+    function manualSync() {
+      var icon = document.getElementById('sync-icon');
+      icon.classList.add('fa-spin');
+      fetchCloudOrders();
+      setTimeout(function() { icon.classList.remove('fa-spin'); }, 800);
+    }
+
+    function copyRoomLink() {
+      var link = window.location.href;
+      if (!link.includes('room=')) {
+        link = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + currentRoomId;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(function() {
+          alert('已複製房間專屬連結！\n直接傳到 LINE 群組，大家點開即可同時點餐！');
+        }).catch(function() {
+          prompt('請複製此專屬網址傳給同事：', link);
+        });
+      } else {
+        prompt('請複製此專屬網址傳給同事：', link);
+      }
+    }
+
+    // ==========================================
+    // 點餐與互動邏輯
+    // ==========================================
     function switchTab(tabId) {
       var views = ['order', 'list', 'summary'];
       for (var i = 0; i < views.length; i++) {
@@ -360,3 +487,454 @@
         price: 0,
         quantity: 1,
         note: ''
+      });
+      renderCurrentCart();
+    }
+
+    function renderCurrentCart() {
+      var container = document.getElementById('current-items-container');
+      var emptyHint = document.getElementById('empty-cart-hint');
+      var totalDisplay = document.getElementById('current-cart-total');
+
+      container.innerHTML = '';
+      if (currentCart.length === 0) {
+        emptyHint.classList.remove('hidden');
+        totalDisplay.innerText = '0';
+        return;
+      }
+      emptyHint.classList.add('hidden');
+
+      var currentTotal = 0;
+      currentCart.forEach(function(item, index) {
+        var itemTotal = (item.price || 0) * (item.quantity || 1);
+        currentTotal += itemTotal;
+
+        var row = document.createElement('div');
+        row.className = 'p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs space-y-2';
+        row.innerHTML = 
+          '<div class="flex items-center gap-2">' +
+            '<input type="text" placeholder="品項名稱" value="' + escapeHtml(item.name) + '" ' +
+              'oninput="updateCartItemField(' + index + ', \'name\', this.value)" ' +
+              'class="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-orange-400">' +
+            '<div class="flex items-center gap-1">' +
+              '<span class="text-slate-400 text-[11px]">$</span>' +
+              '<input type="number" placeholder="單價" value="' + (item.price === 0 ? '' : item.price) + '" ' +
+                'oninput="updateCartItemField(' + index + ', \'price\', Number(this.value))" ' +
+                'class="w-16 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-right focus:outline-none focus:ring-1 focus:ring-orange-400">' +
+            '</div>' +
+            '<button type="button" onclick="removeCartItem(' + index + ')" class="text-slate-400 hover:text-rose-500 p-1.5">' +
+              '<i class="fa-solid fa-trash"></i>' +
+            '</button>' +
+          '</div>' +
+          '<div class="flex items-center justify-between gap-2 pt-1">' +
+            '<input type="text" placeholder="備註 (如: 冰/溫、去冰、加辣、去小黃瓜)" value="' + escapeHtml(item.note || '') + '" ' +
+              'oninput="updateCartItemField(' + index + ', \'note\', this.value)" ' +
+              'class="flex-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-400">' +
+            '<div class="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden shadow-xs">' +
+              '<button type="button" onclick="changeCartQty(' + index + ', -1)" class="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100">' +
+                '<i class="fa-solid fa-minus text-[10px]"></i>' +
+              '</button>' +
+              '<span class="w-7 text-center font-bold text-slate-700">' + item.quantity + '</span>' +
+              '<button type="button" onclick="changeCartQty(' + index + ', 1)" class="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100">' +
+                '<i class="fa-solid fa-plus text-[10px]"></i>' +
+              '</button>' +
+            '</div>' +
+          '</div>';
+        container.appendChild(row);
+      });
+      totalDisplay.innerText = currentTotal;
+    }
+
+    function updateCartItemField(index, field, value) {
+      if (currentCart[index]) {
+        currentCart[index][field] = value;
+        if (field === 'price') {
+          var currentTotal = currentCart.reduce(function(sum, it) {
+            return sum + (Number(it.price) || 0) * (it.quantity || 1);
+          }, 0);
+          document.getElementById('current-cart-total').innerText = currentTotal;
+        }
+      }
+    }
+
+    function changeCartQty(index, delta) {
+      if (!currentCart[index]) return;
+      var newQty = currentCart[index].quantity + delta;
+      if (newQty <= 0) removeCartItem(index);
+      else {
+        currentCart[index].quantity = newQty;
+        renderCurrentCart();
+      }
+    }
+
+    function removeCartItem(index) {
+      currentCart.splice(index, 1);
+      renderCurrentCart();
+    }
+
+    // ==========================================
+    // 送出登記（自動寫入雲端中繼站）
+    // ==========================================
+    function submitColleagueOrder() {
+      if (!currentRoomId) {
+        alert('請先點擊上方「開新房」建立房間，或請主揪傳房間連結給您！');
+        return;
+      }
+
+      var nameInput = document.getElementById('order-userName');
+      var colleagueName = (nameInput.value || '').trim();
+
+      if (!colleagueName) {
+        alert('請先輸入你的名字或稱呼喔！');
+        nameInput.focus();
+        return;
+      }
+      if (currentCart.length === 0) {
+        alert('你尚未選擇任何餐點，請點擊上方推薦品項加入！');
+        return;
+      }
+      var hasEmptyName = currentCart.some(function(i) {
+        return !i.name || i.name.trim() === '';
+      });
+      if (hasEmptyName) {
+        alert('有餐點名稱是空白的，請填寫或刪除該項目！');
+        return;
+      }
+
+      try { localStorage.setItem('bf_my_name', colleagueName); } catch(e) {}
+
+      var userTotal = currentCart.reduce(function(acc, it) {
+        return acc + (Number(it.price) || 0) * (it.quantity || 1);
+      }, 0);
+
+      var timeStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+
+      var newRecord = {
+        id: editingOrderId || ('ord_' + Date.now()),
+        userName: colleagueName,
+        items: JSON.parse(JSON.stringify(currentCart)),
+        totalPrice: userTotal,
+        time: timeStr
+      };
+
+      if (editingOrderId) {
+        var idx = orders.findIndex(function(o) { return o.id === editingOrderId; });
+        if (idx !== -1) orders[idx] = newRecord;
+        cancelEditMode();
+      } else {
+        orders.unshift(newRecord);
+        currentCart = [];
+        renderCurrentCart();
+      }
+
+      // 同步到雲端中繼站
+      pushOrdersToCloud(function() {
+        alert('已成功送出！所有人均可即時查看');
+        switchTab('list');
+      });
+    }
+
+    function editOrder(orderId) {
+      var order = orders.find(function(o) { return o.id === orderId; });
+      if (!order) return;
+
+      editingOrderId = order.id;
+      document.getElementById('order-userName').value = order.userName;
+      currentCart = JSON.parse(JSON.stringify(order.items));
+
+      document.getElementById('cancel-edit-btn').classList.remove('hidden');
+      document.getElementById('submit-order-btn').innerHTML = '<i class="fa-solid fa-check text-xs"></i><span>確認修改並同步</span>';
+
+      switchTab('order');
+      renderCurrentCart();
+    }
+
+    function cancelEditMode() {
+      editingOrderId = null;
+      currentCart = [];
+      document.getElementById('cancel-edit-btn').classList.add('hidden');
+      document.getElementById('submit-order-btn').innerHTML = '<i class="fa-solid fa-cloud-arrow-up text-xs"></i><span>送出登記並同步</span>';
+      renderCurrentCart();
+    }
+
+    function deleteOrder(orderId) {
+      var target = orders.find(function(o) { return o.id === orderId; });
+      if (!confirm('確定要刪除「' + (target ? target.userName : '此同事') + '」的餐點嗎？此動作將同步到所有人的手機。')) return;
+
+      orders = orders.filter(function(o) { return o.id !== orderId; });
+      pushOrdersToCloud(function() {
+        renderColleagueList();
+        renderSummaryView();
+      });
+    }
+
+    // 渲染「誰點了什麼」頁面
+    function renderColleagueList() {
+      var container = document.getElementById('colleagues-order-cards');
+      var emptyHint = document.getElementById('empty-list-hint');
+      var countText = document.getElementById('colleague-count-text');
+
+      container.innerHTML = '';
+      countText.innerText = '共 ' + orders.length + ' 位同事';
+
+      if (orders.length === 0) {
+        emptyHint.classList.remove('hidden');
+        return;
+      }
+      emptyHint.classList.add('hidden');
+
+      orders.forEach(function(ord) {
+        var card = document.createElement('div');
+        card.className = 'bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2.5';
+
+        var itemsHtml = (ord.items || []).map(function(it) {
+          return '<div class="flex justify-between items-center text-xs py-1 border-b border-slate-50 last:border-0">' +
+            '<div>' +
+              '<span class="font-medium text-slate-800">' + escapeHtml(it.name) + '</span>' +
+              (it.note ? '<span class="text-[10px] bg-slate-100 text-orange-600 px-1.5 py-0.5 rounded ml-1">' + escapeHtml(it.note) + '</span>' : '') +
+              '<span class="text-slate-400 text-[11px] ml-1">x' + it.quantity + '</span>' +
+            '</div>' +
+            '<div class="font-semibold text-slate-700">NT$ ' + (it.price * it.quantity) + '</div>' +
+          '</div>';
+        }).join('');
+
+        card.innerHTML = 
+          '<div class="flex justify-between items-start">' +
+            '<div class="flex items-center gap-2">' +
+              '<div class="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-xs">' +
+                escapeHtml((ord.userName || '友').charAt(0)) +
+              '</div>' +
+              '<div>' +
+                '<h4 class="text-sm font-bold text-slate-800">' + escapeHtml(ord.userName) + '</h4>' +
+                '<p class="text-[10px] text-slate-400">登記時間: ' + (ord.time || '') + '</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex items-center gap-1.5">' +
+              '<button type="button" onclick="editOrder(\'' + ord.id + '\')" class="p-1.5 text-slate-400 hover:text-orange-600 rounded-lg hover:bg-orange-50 transition" title="修改">' +
+                '<i class="fa-solid fa-pen-to-square"></i>' +
+              '</button>' +
+              '<button type="button" onclick="deleteOrder(\'' + ord.id + '\')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="刪除">' +
+                '<i class="fa-solid fa-trash"></i>' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="bg-slate-50 rounded-xl p-2.5 space-y-1">' + itemsHtml + '</div>' +
+          '<div class="flex justify-between items-center pt-1 text-xs">' +
+            '<span class="text-slate-400">個人應付</span>' +
+            '<span class="text-sm font-bold text-orange-600">NT$ ' + ord.totalPrice + '</span>' +
+          '</div>';
+        container.appendChild(card);
+      });
+    }
+
+    // 渲染「結單彙整」
+    function renderSummaryView() {
+      var summaryTbody = document.getElementById('summary-items-tbody');
+      var colleagueSumContainer = document.getElementById('summary-colleagues-list');
+      
+      summaryTbody.innerHTML = '';
+      colleagueSumContainer.innerHTML = '';
+
+      var grandTotalQty = 0;
+      var grandTotalPrice = 0;
+      var aggregatedMap = {};
+
+      orders.forEach(function(o) {
+        (o.items || []).forEach(function(it) {
+          var key = (it.name || '').trim() + '__' + (it.note || '').trim();
+          if (!aggregatedMap[key]) {
+            aggregatedMap[key] = {
+              name: (it.name || '').trim(),
+              note: (it.note || '').trim(),
+              price: Number(it.price) || 0,
+              quantity: 0
+            };
+          }
+          aggregatedMap[key].quantity += (Number(it.quantity) || 1);
+          grandTotalQty += (Number(it.quantity) || 1);
+        });
+      });
+
+      var keys = Object.keys(aggregatedMap);
+      if (keys.length === 0) {
+        summaryTbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400 text-xs">尚無任何餐點記錄</td></tr>';
+      } else {
+        keys.forEach(function(k) {
+          var item = aggregatedMap[k];
+          var rowSubtotal = item.price * item.quantity;
+          grandTotalPrice += rowSubtotal;
+
+          var tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-50/70';
+          tr.innerHTML = 
+            '<td class="py-2.5 px-3">' +
+              '<div class="font-medium text-slate-800">' + escapeHtml(item.name) + '</div>' +
+              (item.note ? '<div class="text-[10px] text-orange-600 font-normal">↳ ' + escapeHtml(item.note) + '</div>' : '') +
+            '</td>' +
+            '<td class="py-2.5 px-2 text-center font-bold text-slate-700 bg-slate-50/50">' + item.quantity + '</td>' +
+            '<td class="py-2.5 px-3 text-right font-semibold text-slate-600">$' + rowSubtotal + '</td>';
+          summaryTbody.appendChild(tr);
+        });
+      }
+
+      if (orders.length === 0) {
+        colleagueSumContainer.innerHTML = '<div class="text-center text-slate-400 py-4">無資料</div>';
+      } else {
+        orders.forEach(function(o) {
+          var row = document.createElement('div');
+          row.className = 'flex justify-between items-center py-2 px-2.5 bg-slate-50 rounded-xl';
+          row.innerHTML = 
+            '<div class="flex items-center gap-2">' +
+              '<span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px]">' +
+                escapeHtml((o.userName || '友').charAt(0)) +
+              '</span>' +
+              '<span class="font-medium text-slate-700">${escapeHtml(o.userName)}</span>' +
+            '</div>' +
+            '<div class="font-bold text-orange-600">NT$ ' + o.totalPrice + '</div>';
+          colleagueSumContainer.appendChild(row);
+        });
+      }
+
+      document.getElementById('sum-total-qty').innerText = grandTotalQty;
+      document.getElementById('sum-total-price').innerText = grandTotalPrice;
+    }
+
+    function updateBadge() {
+      var badge = document.getElementById('badge-count');
+      if (orders && orders.length > 0) {
+        badge.innerText = orders.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    function copyLineSummary() {
+      if (orders.length === 0) {
+        alert('目前沒有訂單可複製喔！');
+        return;
+      }
+
+      var aggregatedMap = {};
+      var totalQty = 0;
+      var totalPrice = 0;
+
+      orders.forEach(function(o) {
+        totalPrice += o.totalPrice;
+        (o.items || []).forEach(function(it) {
+          totalQty += it.quantity;
+          var key = it.name.trim() + '__' + (it.note || '').trim();
+          if (!aggregatedMap[key]) {
+            aggregatedMap[key] = { name: it.name.trim(), note: (it.note || '').trim(), qty: 0 };
+          }
+          aggregatedMap[key].qty += it.quantity;
+        });
+      });
+
+      var today = new Date().toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+      var text = '🥪【' + today + ' 早餐團購結單表】🥪\n' +
+                 '--------------------------\n' +
+                 '📞【向店家點餐彙整】\n';
+
+      Object.keys(aggregatedMap).forEach(function(k) {
+        var item = aggregatedMap[k];
+        text += '• ' + item.name + (item.note ? ' (' + item.note + ')' : '') + ' x ' + item.qty + '\n';
+      });
+
+      text += '--------------------------\n' +
+              '💰【各人分攤應付】\n';
+      orders.forEach(function(o) {
+        text += '• ' + o.userName + '：$' + o.totalPrice + ' 元\n';
+      });
+
+      text += '--------------------------\n' +
+              '總份數：' + totalQty + ' 份\n' +
+              '總金額：NT$ ' + totalPrice + ' 元\n' +
+              '請大家備好零錢或轉帳給主揪囉！感謝大家～';
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          alert('已複製結單清單！直接貼到 LINE 群即可');
+        }).catch(function() {
+          prompt('請複製以下結單清單：', text);
+        });
+      } else {
+        prompt('請複製以下結單清單：', text);
+      }
+    }
+
+    function confirmClearAll() {
+      if (orders.length === 0) {
+        alert('目前房間本來就沒有任何訂單！');
+        return;
+      }
+      if (confirm('確定要清空今天房間內的所有訂單嗎？此動作將同步清除所有人的畫面！')) {
+        orders = [];
+        pushOrdersToCloud(function() {
+          renderColleagueList();
+          renderSummaryView();
+          updateBadge();
+          alert('已清空房間所有訂單');
+        });
+      }
+    }
+
+    // 常用推薦菜單設定
+    function openMenuSettingsModal() {
+      renderPresetSettingsList();
+      document.getElementById('menu-modal').classList.remove('hidden');
+    }
+    function closeMenuSettingsModal() {
+      document.getElementById('menu-modal').classList.add('hidden');
+      renderQuickMenuChips();
+    }
+    function renderPresetSettingsList() {
+      var list = document.getElementById('preset-items-list');
+      list.innerHTML = '';
+      presets.forEach(function(p, idx) {
+        var div = document.createElement('div');
+        div.className = 'flex items-center justify-between p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs';
+        div.innerHTML = 
+          '<div>' +
+            '<span class="font-medium text-slate-800">' + escapeHtml(p.name) + '</span>' +
+            '<span class="text-orange-600 font-bold ml-1">$' + p.price + '</span>' +
+          '</div>' +
+          '<button type="button" onclick="deletePresetItem(' + idx + ')" class="text-slate-400 hover:text-rose-500 p-1">' +
+            '<i class="fa-solid fa-trash-can"></i>' +
+          '</button>';
+        list.appendChild(div);
+      });
+    }
+    function addPresetItem() {
+      var nameInput = document.getElementById('new-preset-name');
+      var priceInput = document.getElementById('new-preset-price');
+      var name = (nameInput.value || '').trim();
+      var price = Number(priceInput.value);
+      if (!name) return alert('請輸入品項名稱');
+      presets.push({ id: Date.now().toString(), name: name, price: isNaN(price) ? 0 : price });
+      nameInput.value = '';
+      priceInput.value = '';
+      try { localStorage.setItem('bf_presets_v5', JSON.stringify(presets)); } catch(e) {}
+      renderPresetSettingsList();
+    }
+    function deletePresetItem(index) {
+      presets.splice(index, 1);
+      try { localStorage.setItem('bf_presets_v5', JSON.stringify(presets)); } catch(e) {}
+      renderPresetSettingsList();
+    }
+    function resetDefaultPresets() {
+      if (confirm('確定重置推薦菜單為預設狀態嗎？')) {
+        presets = DEFAULT_PRESETS.slice();
+        try { localStorage.setItem('bf_presets_v5', JSON.stringify(presets)); } catch(e) {}
+        renderPresetSettingsList();
+        alert('已重設為預設菜單');
+      }
+    }
+
+    function escapeHtml(string) {
+      if (!string) return '';
+      return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
