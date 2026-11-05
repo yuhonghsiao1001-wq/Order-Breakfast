@@ -3,80 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>早餐即時揪團小幫手</title>
+  <title>早餐揪團結單小幫手</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Google Fonts: Inter & Noto Sans TC -->
+  <!-- Google Fonts: Noto Sans TC -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Firebase SDK (Modular v9/v10 via CDN) -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, push, onValue, set, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
-    // -------------------------------------------------------------
-    // 【請替換這裡】至 https://console.firebase.google.com 免費建立專案
-    // 並在 Realtime Database 規則中設定 read: true, write: true 即可
-    // -------------------------------------------------------------
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
-
-    // 初始化 Firebase
-    let db;
-    let ordersRef;
-    try {
-      const app = initializeApp(firebaseConfig);
-      db = getDatabase(app);
-      ordersRef = ref(db, 'orders');
-
-      // 監聽雲端資料庫變更（所有人手機只要有新增/刪除，即時同步更新畫面）
-      onValue(ordersRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          window.orders = Object.keys(data).map(key => ({
-            id: key,
-            ...data[key]
-          })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        } else {
-          window.orders = [];
-        }
-        window.onOrdersUpdated();
-      });
-    } catch (e) {
-      console.warn("未設定有效的 Firebase 金鑰，暫時使用 LocalStorage 模式運作", e);
-    }
-
-    // 將資料庫操作掛載到 window 供全域函式使用
-    window.dbOps = {
-      addOrder: (order) => {
-        if (!db) return fallbackLocalAdd(order);
-        return push(ordersRef, { ...order, timestamp: serverTimestamp() });
-      },
-      updateOrder: (id, order) => {
-        if (!db) return fallbackLocalUpdate(id, order);
-        return set(ref(db, `orders/${id}`), { ...order, timestamp: serverTimestamp() });
-      },
-      deleteOrder: (id) => {
-        if (!db) return fallbackLocalDelete(id);
-        return remove(ref(db, `orders/${id}`));
-      },
-      clearAll: () => {
-        if (!db) return fallbackLocalClear();
-        return remove(ordersRef);
-      }
-    };
-  </script>
+  <!-- 引入穩定的 Firebase 相容版 SDK (非 module，保證載入即用不阻斷) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <script>
     tailwind.config = {
@@ -84,15 +23,6 @@
         extend: {
           fontFamily: {
             sans: ['Noto Sans TC', 'Inter', 'sans-serif'],
-          },
-          colors: {
-            brand: {
-              50: '#fff7ed',
-              100: '#ffedd5',
-              500: '#f97316',
-              600: '#ea580c',
-              700: '#c2410c'
-            }
           }
         }
       }
@@ -115,8 +45,8 @@
         </div>
         <div>
           <h1 class="text-base font-bold text-slate-800 leading-tight">早餐即時揪團訂單</h1>
-          <p class="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 即時雲端同步中
+          <p id="sync-status" class="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-slate-400"></span> 本地暫存模式
           </p>
         </div>
       </div>
@@ -158,7 +88,7 @@
           <input type="text" id="order-userName" placeholder="例如：Alex、小美、Leo" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white transition" />
         </div>
 
-        <!-- 常用快捷點餐選單 -->
+        <!-- 常用推薦 -->
         <div class="mb-4">
           <div class="flex justify-between items-center mb-2">
             <span class="text-xs font-semibold text-slate-500">
@@ -166,16 +96,14 @@
             </span>
             <span class="text-[11px] text-slate-400">點擊即加入</span>
           </div>
-          <div id="quick-menu-chips" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto no-scrollbar pb-1">
-            <!-- 推薦品項 -->
-          </div>
+          <div id="quick-menu-chips" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto no-scrollbar pb-1"></div>
         </div>
 
         <!-- 當前已選項目列表 -->
         <div class="border-t border-slate-100 pt-3">
           <div class="flex justify-between items-center mb-2">
             <span class="text-xs font-semibold text-slate-700">本次選購清單</span>
-            <button onclick="addNewCustomItem()" class="text-xs text-orange-600 font-medium hover:text-orange-700 flex items-center gap-1 active:scale-95">
+            <button type="button" onclick="addNewCustomItem()" class="text-xs text-orange-600 font-medium hover:text-orange-700 flex items-center gap-1 active:scale-95">
               <i class="fa-solid fa-plus-circle"></i> 自訂其他餐點
             </button>
           </div>
@@ -184,7 +112,7 @@
 
           <div id="empty-cart-hint" class="py-6 text-center text-slate-400">
             <i class="fa-solid fa-basket-shopping text-3xl mb-2 opacity-30"></i>
-            <p class="text-xs">尚未加入餐點，可點上方快捷推薦或自訂！</p>
+            <p class="text-xs">尚未加入餐點，可點上方推薦或自訂！</p>
           </div>
         </div>
 
@@ -195,22 +123,22 @@
             <div class="text-lg font-bold text-orange-600">NT$ <span id="current-cart-total">0</span></div>
           </div>
           <div class="flex gap-2">
-            <button id="cancel-edit-btn" onclick="cancelEditMode()" class="hidden px-3 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold active:scale-95">
+            <button type="button" id="cancel-edit-btn" onclick="cancelEditMode()" class="hidden px-3 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold active:scale-95">
               取消修改
             </button>
-            <button onclick="submitColleagueOrder()" id="submit-order-btn" class="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl shadow-md shadow-orange-500/25 active:scale-95 transition text-sm flex items-center gap-1.5">
-              <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
-              <span>送出登記並同步</span>
+            <button type="button" onclick="submitColleagueOrder()" id="submit-order-btn" class="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl shadow-md shadow-orange-500/25 active:scale-95 transition text-sm flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+              <span>送出登記</span>
             </button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ================= 頁面 2: 同事清單區 (即時顯示所有人) ================= -->
+    <!-- ================= 頁面 2: 同事清單區 ================= -->
     <section id="view-list" class="hidden space-y-3">
       <div class="flex justify-between items-center px-1">
-        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">所有人點餐明細</h2>
+        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">所有人點餐名單</h2>
         <span id="colleague-count-text" class="text-xs text-slate-500">共 0 位同事</span>
       </div>
 
@@ -219,13 +147,12 @@
       <div id="empty-list-hint" class="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-100">
         <i class="fa-solid fa-user-clock text-4xl mb-3 text-slate-300"></i>
         <p class="text-sm font-medium text-slate-600">目前還沒有人填寫</p>
-        <p class="text-xs text-slate-400 mt-1">其他人填寫後，這裡會自動跳出來！</p>
+        <p class="text-xs text-slate-400 mt-1">快切換到「登記點餐」送出第一筆餐點！</p>
       </div>
     </section>
 
     <!-- ================= 頁面 3: 結單彙整區 ================= -->
     <section id="view-summary" class="hidden space-y-4">
-      <!-- 統計 Overview -->
       <div class="grid grid-cols-2 gap-3">
         <div class="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm">
           <div class="text-xs text-slate-400 mb-1 flex items-center gap-1">
@@ -241,7 +168,6 @@
         </div>
       </div>
 
-      <!-- 給店家的彙整表 (同品項已聚合) -->
       <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-1.5">
@@ -265,25 +191,23 @@
         </div>
       </div>
 
-      <!-- 同事收錢分攤明細 -->
       <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-1.5">
             <span class="w-2 h-4 bg-amber-500 rounded-full"></span>
-            <h3 class="text-sm font-bold text-slate-800">各同事應付分攤金額</h3>
+            <h3 class="text-sm font-bold text-slate-800">各同事應付分攤表</h3>
           </div>
         </div>
         <div id="summary-colleagues-list" class="space-y-2 text-xs"></div>
       </div>
 
-      <!-- 操作按鈕 -->
       <div class="grid grid-cols-2 gap-2 pt-1">
-        <button onclick="copyLineSummary()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition">
+        <button type="button" onclick="copyLineSummary()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition">
           <i class="fa-solid fa-copy"></i>
           <span>複製 LINE 格式清單</span>
         </button>
 
-        <button onclick="confirmClearAll()" class="w-full py-3 bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-600 font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 transition active:scale-95">
+        <button type="button" onclick="confirmClearAll()" class="w-full py-3 bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-600 font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 transition active:scale-95">
           <i class="fa-solid fa-trash-can"></i>
           <span>清空今日全部訂單</span>
         </button>
@@ -298,7 +222,7 @@
         <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
           <i class="fa-solid fa-gear text-orange-500"></i> 管理常用推薦菜單
         </h3>
-        <button onclick="closeMenuSettingsModal()" class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs active:scale-90">
+        <button type="button" onclick="closeMenuSettingsModal()" class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs active:scale-90">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -309,7 +233,7 @@
           <input type="text" id="new-preset-name" placeholder="餐點名稱 (例: 原味蛋餅)" class="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400">
           <input type="number" id="new-preset-price" placeholder="價格" class="w-20 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400">
         </div>
-        <button onclick="addPresetItem()" class="w-full py-2 bg-orange-500 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-orange-600 active:scale-95 transition">
+        <button type="button" onclick="addPresetItem()" class="w-full py-2 bg-orange-500 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-orange-600 active:scale-95 transition">
           + 加入推薦列表
         </button>
       </div>
@@ -317,8 +241,8 @@
       <div class="p-3.5 overflow-y-auto space-y-2 flex-1" id="preset-items-list"></div>
 
       <div class="p-3 bg-slate-50 border-t border-slate-100 flex justify-between">
-        <button onclick="resetDefaultPresets()" class="text-xs text-slate-500 hover:text-orange-600">重設為系統預設</button>
-        <button onclick="closeMenuSettingsModal()" class="px-4 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg">完成</button>
+        <button type="button" onclick="resetDefaultPresets()" class="text-xs text-slate-500 hover:text-orange-600">重設為系統預設</button>
+        <button type="button" onclick="closeMenuSettingsModal()" class="px-4 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg">完成</button>
       </div>
     </div>
   </div>
@@ -330,6 +254,7 @@
   </div>
 
   <script>
+    // 預設快捷品項
     const DEFAULT_PRESETS = [
       { id: '1', name: '原味蛋餅', price: 30 },
       { id: '2', name: '培根蛋吐司', price: 45 },
@@ -342,35 +267,92 @@
       { id: '9', name: '卡啦雞腿堡', price: 65 }
     ];
 
-    const STORAGE_KEY_PRESETS = 'bf_group_presets_v2';
-    const STORAGE_KEY_ORDERS = 'bf_group_orders_v2';
+    const STORAGE_KEY_PRESETS = 'bf_group_presets_v3';
+    const STORAGE_KEY_ORDERS = 'bf_group_orders_v3';
 
-    window.orders = [];
+    // 核心資料狀態
+    let orders = [];
     let presets = [];
     let currentCart = [];
     let editingOrderId = null;
     let activeTab = 'order';
 
+    // ==========================================
+    // 雲端同步設定 (選填)
+    // 若填寫，多人打開同網址即可即時同步
+    // 若未填寫，自動切換至穩定的 LocalStorage 模式，絕不卡死
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "", // 填入你的 Firebase API Key
+      databaseURL: "", // 例: "https://your-app-default-rtdb.firebaseio.com"
+      projectId: ""
+    };
+
+    let isCloudMode = false;
+    let dbRef = null;
+
+    function initDatabase() {
+      if (window.firebase && firebaseConfig.databaseURL && firebaseConfig.databaseURL.startsWith('http')) {
+        try {
+          firebase.initializeApp(firebaseConfig);
+          const db = firebase.database();
+          dbRef = db.ref('orders');
+
+          dbRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              orders = Object.keys(data).map(key => ({
+                id: key,
+                ...data[key]
+              })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            } else {
+              orders = [];
+            }
+            onDataChanged();
+          });
+
+          isCloudMode = true;
+          const statusElem = document.getElementById('sync-status');
+          statusElem.className = 'text-[11px] text-emerald-600 font-medium flex items-center gap-1';
+          statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 雲端即時同步中';
+          return;
+        } catch (err) {
+          console.warn("Firebase 初始化失敗，使用本機模式", err);
+        }
+      }
+
+      // 未配置 Firebase 時的預設本機讀取
+      try {
+        const savedOrders = localStorage.getItem(STORAGE_KEY_ORDERS);
+        orders = savedOrders ? JSON.parse(savedOrders) : [];
+      } catch (e) {
+        orders = [];
+      }
+      onDataChanged();
+    }
+
+    // 初始化應用程式
     window.onload = function() {
-      // 載入預設菜單與記住的名字
+      // 記住上次輸入的姓名
       const savedName = localStorage.getItem('bf_my_name');
       if (savedName) document.getElementById('order-userName').value = savedName;
 
+      // 載入快捷菜單
       const savedPresets = localStorage.getItem(STORAGE_KEY_PRESETS);
       presets = savedPresets ? JSON.parse(savedPresets) : [...DEFAULT_PRESETS];
 
+      initDatabase();
       renderQuickMenuChips();
       renderCurrentCart();
-      updateBadge();
     };
 
-    // 當雲端訂單有任何變更時觸發的回呼
-    window.onOrdersUpdated = function() {
+    function onDataChanged() {
       updateBadge();
       if (activeTab === 'list') renderColleagueList();
       if (activeTab === 'summary') renderSummaryView();
-    };
+    }
 
+    // 切換頁籤
     function switchTab(tabId) {
       activeTab = tabId;
       const views = ['order', 'list', 'summary'];
@@ -392,6 +374,7 @@
       if (tabId === 'summary') renderSummaryView();
     }
 
+    // 渲染上方快捷推薦
     function renderQuickMenuChips() {
       const container = document.getElementById('quick-menu-chips');
       container.innerHTML = '';
@@ -433,6 +416,7 @@
       renderCurrentCart();
     }
 
+    // 渲染購物車
     function renderCurrentCart() {
       const container = document.getElementById('current-items-container');
       const emptyHint = document.getElementById('empty-cart-hint');
@@ -464,7 +448,7 @@
                 oninput="updateCartItemField(${index}, 'price', Number(this.value))"
                 class="w-16 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-right focus:outline-none focus:ring-1 focus:ring-orange-400">
             </div>
-            <button onclick="removeCartItem(${index})" class="text-slate-400 hover:text-rose-500 p-1.5">
+            <button type="button" onclick="removeCartItem(${index})" class="text-slate-400 hover:text-rose-500 p-1.5">
               <i class="fa-solid fa-trash"></i>
             </button>
           </div>
@@ -473,11 +457,11 @@
               oninput="updateCartItemField(${index}, 'note', this.value)"
               class="flex-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-400">
             <div class="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden shadow-xs">
-              <button onclick="changeCartQty(${index}, -1)" class="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 active:bg-slate-200">
+              <button type="button" onclick="changeCartQty(${index}, -1)" class="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 active:bg-slate-200">
                 <i class="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span class="w-7 text-center font-bold text-slate-700">${item.quantity}</span>
-              <button onclick="changeCartQty(${index}, 1)" class="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 active:bg-slate-200">
+              <button type="button" onclick="changeCartQty(${index}, 1)" class="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 active:bg-slate-200">
                 <i class="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -513,8 +497,10 @@
       renderCurrentCart();
     }
 
-    // 送出訂單（即時寫入雲端）
-    async function submitColleagueOrder() {
+    // ==========================================
+    // 送出登記（同步與修復）
+    // ==========================================
+    function submitColleagueOrder() {
       const nameInput = document.getElementById('order-userName');
       const colleagueName = nameInput.value.trim();
 
@@ -536,28 +522,49 @@
       const userTotal = currentCart.reduce((acc, it) => acc + (Number(it.price) || 0) * (it.quantity || 1), 0);
       const timeStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
 
-      const payload = {
+      const newRecord = {
         userName: colleagueName,
         items: JSON.parse(JSON.stringify(currentCart)),
         totalPrice: userTotal,
-        time: timeStr
+        time: timeStr,
+        timestamp: Date.now()
       };
 
-      if (editingOrderId) {
-        await window.dbOps.updateOrder(editingOrderId, payload);
-        showToast(`已更新「${colleagueName}」的訂單！`);
-        cancelEditMode();
+      if (isCloudMode && dbRef) {
+        // 雲端即時模式
+        if (editingOrderId) {
+          dbRef.child(editingOrderId).set(newRecord);
+          showToast(`已更新「${colleagueName}」的訂單！`);
+          cancelEditMode();
+        } else {
+          dbRef.push(newRecord);
+          showToast(`已送出登記！`);
+          currentCart = [];
+          renderCurrentCart();
+        }
       } else {
-        await window.dbOps.addOrder(payload);
-        showToast(`已登記！所有人均可即時查看`);
-        currentCart = [];
-        renderCurrentCart();
+        // 本機模式（保證立即可用）
+        if (editingOrderId) {
+          const idx = orders.findIndex(o => o.id === editingOrderId);
+          if (idx !== -1) orders[idx] = { ...newRecord, id: editingOrderId };
+          showToast(`已更新「${colleagueName}」的訂單！`);
+          cancelEditMode();
+        } else {
+          newRecord.id = 'ord_' + Date.now();
+          orders.unshift(newRecord);
+          showToast(`已登記「${colleagueName}」的餐點！`);
+          currentCart = [];
+          renderCurrentCart();
+        }
+        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
+        onDataChanged();
       }
+
       switchTab('list');
     }
 
     function editOrder(orderId) {
-      const order = window.orders.find(o => o.id === orderId);
+      const order = orders.find(o => o.id === orderId);
       if (!order) return;
 
       editingOrderId = order.id;
@@ -576,14 +583,21 @@
       editingOrderId = null;
       currentCart = [];
       document.getElementById('cancel-edit-btn').classList.add('hidden');
-      document.getElementById('submit-order-btn').innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-xs"></i><span>送出登記並同步</span>`;
+      document.getElementById('submit-order-btn').innerHTML = `<i class="fa-solid fa-paper-plane text-xs"></i><span>送出登記</span>`;
       renderCurrentCart();
     }
 
-    async function deleteOrder(orderId) {
-      const target = window.orders.find(o => o.id === orderId);
+    function deleteOrder(orderId) {
+      const target = orders.find(o => o.id === orderId);
       if (!confirm(`確定要刪除「${target ? target.userName : '此同事'}」的這筆餐點嗎？`)) return;
-      await window.dbOps.deleteOrder(orderId);
+
+      if (isCloudMode && dbRef) {
+        dbRef.child(orderId).remove();
+      } else {
+        orders = orders.filter(o => o.id !== orderId);
+        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
+        onDataChanged();
+      }
       showToast('已移除訂單');
     }
 
@@ -594,15 +608,15 @@
       const countText = document.getElementById('colleague-count-text');
 
       container.innerHTML = '';
-      countText.innerText = `共 ${window.orders.length} 位同事`;
+      countText.innerText = `共 ${orders.length} 位同事`;
 
-      if (window.orders.length === 0) {
+      if (orders.length === 0) {
         emptyHint.classList.remove('hidden');
         return;
       }
       emptyHint.classList.add('hidden');
 
-      window.orders.forEach(ord => {
+      orders.forEach(ord => {
         const card = document.createElement('div');
         card.className = 'bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2.5';
 
@@ -629,10 +643,10 @@
               </div>
             </div>
             <div class="flex items-center gap-1.5">
-              <button onclick="editOrder('${ord.id}')" class="p-1.5 text-slate-400 hover:text-orange-600 rounded-lg hover:bg-orange-50 transition" title="修改">
+              <button type="button" onclick="editOrder('${ord.id}')" class="p-1.5 text-slate-400 hover:text-orange-600 rounded-lg hover:bg-orange-50 transition" title="修改">
                 <i class="fa-solid fa-pen-to-square"></i>
               </button>
-              <button onclick="deleteOrder('${ord.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="刪除">
+              <button type="button" onclick="deleteOrder('${ord.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="刪除">
                 <i class="fa-solid fa-trash"></i>
               </button>
             </div>
@@ -663,7 +677,7 @@
       // 聚合同品項與備註
       const aggregatedMap = new Map();
 
-      window.orders.forEach(o => {
+      orders.forEach(o => {
         (o.items || []).forEach(it => {
           const key = `${(it.name || '').trim()}__${(it.note || '').trim()}`;
           const current = aggregatedMap.get(key) || {
@@ -699,10 +713,10 @@
         });
       }
 
-      if (window.orders.length === 0) {
+      if (orders.length === 0) {
         colleagueSumContainer.innerHTML = `<div class="text-center text-slate-400 py-4">無資料</div>`;
       } else {
-        window.orders.forEach(o => {
+        orders.forEach(o => {
           const row = document.createElement('div');
           row.className = 'flex justify-between items-center py-2 px-2.5 bg-slate-50 rounded-xl';
           row.innerHTML = `
@@ -724,8 +738,8 @@
 
     function updateBadge() {
       const badge = document.getElementById('badge-count');
-      if (window.orders && window.orders.length > 0) {
-        badge.innerText = window.orders.length;
+      if (orders && orders.length > 0) {
+        badge.innerText = orders.length;
         badge.classList.remove('hidden');
       } else {
         badge.classList.add('hidden');
@@ -734,7 +748,7 @@
 
     // 複製文字至 LINE
     function copyLineSummary() {
-      if (window.orders.length === 0) {
+      if (orders.length === 0) {
         showToast('目前沒有訂單可複製喔！', true);
         return;
       }
@@ -743,7 +757,7 @@
       let totalQty = 0;
       let totalPrice = 0;
 
-      window.orders.forEach(o => {
+      orders.forEach(o => {
         totalPrice += o.totalPrice;
         (o.items || []).forEach(it => {
           totalQty += it.quantity;
@@ -763,7 +777,7 @@
       });
       text += `--------------------------\n`;
       text += `💰【各人分攤應付】\n`;
-      window.orders.forEach(o => {
+      orders.forEach(o => {
         text += `• ${o.userName}：$${o.totalPrice} 元\n`;
       });
       text += `--------------------------\n`;
@@ -790,14 +804,20 @@
       document.body.removeChild(textarea);
     }
 
-    async function confirmClearAll() {
-      if (window.orders.length === 0) {
+    function confirmClearAll() {
+      if (orders.length === 0) {
         showToast('目前本來就沒有任何訂單！');
         return;
       }
-      if (window.confirm('確定要清空今天雲端上的所有訂單記錄嗎？此動作將同步清除所有人的畫面！')) {
-        await window.dbOps.clearAll();
-        showToast('已清空所有人的訂單');
+      if (confirm('確定要清空今天的所有訂單記錄嗎？此動作無法復原！')) {
+        if (isCloudMode && dbRef) {
+          dbRef.remove();
+        } else {
+          orders = [];
+          localStorage.removeItem(STORAGE_KEY_ORDERS);
+          onDataChanged();
+        }
+        showToast('已清空所有訂單');
       }
     }
 
@@ -821,7 +841,7 @@
             <span class="font-medium text-slate-800">${escapeHtml(p.name)}</span>
             <span class="text-orange-600 font-bold ml-1">$${p.price}</span>
           </div>
-          <button onclick="deletePresetItem(${idx})" class="text-slate-400 hover:text-rose-500 p-1">
+          <button type="button" onclick="deletePresetItem(${idx})" class="text-slate-400 hover:text-rose-500 p-1">
             <i class="fa-solid fa-trash-can"></i>
           </button>
         `;
@@ -847,7 +867,7 @@
       renderPresetSettingsList();
     }
     function resetDefaultPresets() {
-      if (window.confirm('確定重置推薦菜單為預設狀態嗎？')) {
+      if (confirm('確定重置推薦菜單為預設狀態嗎？')) {
         presets = [...DEFAULT_PRESETS];
         localStorage.setItem(STORAGE_KEY_PRESETS, JSON.stringify(presets));
         renderPresetSettingsList();
@@ -855,34 +875,11 @@
       }
     }
 
-    // 本機 Fallback 備援函式（未配置 Firebase 時保證不報錯）
-    function fallbackLocalAdd(order) {
-      order.id = 'ord_' + Date.now();
-      window.orders.unshift(order);
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(window.orders));
-      window.onOrdersUpdated();
-    }
-    function fallbackLocalUpdate(id, order) {
-      const idx = window.orders.findIndex(o => o.id === id);
-      if (idx !== -1) window.orders[idx] = { ...order, id };
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(window.orders));
-      window.onOrdersUpdated();
-    }
-    function fallbackLocalDelete(id) {
-      window.orders = window.orders.filter(o => o.id !== id);
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(window.orders));
-      window.onOrdersUpdated();
-    }
-    function fallbackLocalClear() {
-      window.orders = [];
-      localStorage.removeItem(STORAGE_KEY_ORDERS);
-      window.onOrdersUpdated();
-    }
-
     function escapeHtml(string) {
       if (!string) return '';
       return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
+
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
       const toastMsg = document.getElementById('toast-msg');
