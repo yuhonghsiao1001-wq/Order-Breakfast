@@ -31,7 +31,7 @@
         </div>
       </div>
       <div class="flex items-center gap-1.5">
-        <button type="button" onclick="manualSync()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 p-2 rounded-full transition active:scale-95" title="立即強制同步">
+        <button type="button" onclick="manualSync()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 p-2 rounded-full transition active:scale-95" title="強制手動更新">
           <i id="sync-icon" class="fa-solid fa-rotate"></i>
         </button>
         <button type="button" onclick="openMenuSettingsModal()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-full font-medium transition flex items-center gap-1 active:scale-95">
@@ -45,22 +45,25 @@
   <!-- 主內容容器 -->
   <main class="max-w-md mx-auto px-3.5 pt-3">
 
-    <!-- 雲端房間狀態條 -->
-    <div class="bg-white border border-slate-200/80 rounded-2xl p-3 mb-3 text-xs flex items-center justify-between shadow-xs">
-      <div>
+    <!-- 雲端房間狀態卡片 (不再依賴日期，永久存在直到手動清空) -->
+    <div class="bg-white border border-slate-200/80 rounded-2xl p-3 mb-3 text-xs shadow-xs space-y-2">
+      <div class="flex items-center justify-between">
         <div class="font-bold text-slate-800 flex items-center gap-1.5">
-          <i class="fa-solid fa-users-rays text-orange-500"></i>
-          <span>今日房間：<span id="room-id-display" class="font-mono text-orange-600">載入中...</span></span>
+          <i class="fa-solid fa-people-roof text-orange-500"></i>
+          <span>揪團房號：<span id="room-id-display" class="font-mono text-orange-600 font-bold">載入中...</span></span>
         </div>
-        <p class="text-[10px] text-slate-400 mt-0.5">點同一個網址的同事會自動加入此房</p>
+        <span class="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">跨日有效</span>
       </div>
-      <div class="flex gap-1.5">
-        <button type="button" onclick="changeCustomRoom()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium active:scale-95 transition">
-          換房間
-        </button>
-        <button type="button" onclick="copyShareLink()" class="px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-semibold active:scale-95 transition">
-          分享連結
-        </button>
+      <div class="flex items-center justify-between pt-1 border-t border-slate-100 gap-2">
+        <p class="text-[11px] text-slate-400 truncate">同行同事請使用此固定房號</p>
+        <div class="flex gap-1.5 shrink-0">
+          <button type="button" onclick="changeCustomRoom()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium active:scale-95 transition text-[11px]">
+            改團名
+          </button>
+          <button type="button" onclick="copyShareLink()" class="px-2.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold active:scale-95 transition text-[11px] flex items-center gap-1">
+            <i class="fa-solid fa-share-nodes text-[10px]"></i> 分享連結
+          </button>
+        </div>
       </div>
     </div>
 
@@ -212,7 +215,7 @@
 
         <button type="button" onclick="confirmClearAll()" class="w-full py-3 bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-600 font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 transition active:scale-95">
           <i class="fa-solid fa-trash-can"></i>
-          <span>清空今日房間訂單</span>
+          <span>結單並清空此房訂單</span>
         </button>
       </div>
     </section>
@@ -271,31 +274,32 @@
     var syncTimer = null;
     var isUpdating = false;
 
-    // 支援 CORS 的全球開源雲端端點
-    var KV_ENDPOINT = 'https://api.counterapi.dev/v1/breakfast_group_v1/';
+    // 全球公開 Key-Value 雲端端點 (支援 CORS)
+    var KV_API_BASE = 'https://kvdb.io/4y2LgJ1bE8oDk9d9wW6UqB/';
 
     window.addEventListener('DOMContentLoaded', function() {
       var savedName = localStorage.getItem('bf_my_name');
       if (savedName) document.getElementById('order-userName').value = savedName;
 
-      var savedPresets = localStorage.getItem('bf_presets_v6');
+      var savedPresets = localStorage.getItem('bf_presets_v7');
       presets = savedPresets ? JSON.parse(savedPresets) : DEFAULT_PRESETS.slice();
 
       renderQuickMenuChips();
       renderCurrentCart();
 
-      // 預設以當天日期作為房間，例如 20261106
-      var todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      // 優先序：網址參數 > 上次使用的房間 > 預設公司房間 (不隨換日重置)
       var params = new URLSearchParams(window.location.search);
       var roomParam = params.get('room');
+      var lastRoom = localStorage.getItem('bf_perm_room');
 
-      currentRoomId = roomParam ? roomParam.trim() : ('room_' + todayStr);
-      initRoom(currentRoomId);
+      var targetRoom = roomParam ? roomParam.trim() : (lastRoom || 'office_team');
+      initRoom(targetRoom);
     });
 
     function initRoom(roomId) {
       currentRoomId = roomId;
-      document.getElementById('room-id-display').innerText = roomId;
+      localStorage.setItem('bf_perm_room', roomId);
+      document.getElementById('room-id-display').innerText = '#' + roomId;
 
       // 立即抓取並每 3 秒自動同步
       fetchRoomOrders();
@@ -304,7 +308,7 @@
     }
 
     function changeCustomRoom() {
-      var newRoom = prompt('請輸入要切換的房間名稱或代號：', currentRoomId);
+      var newRoom = prompt('請輸入要切換的專屬團名或代號（例如：keelung-order、morning-team）：', currentRoomId);
       if (newRoom && newRoom.trim() !== '') {
         var cleanRoom = newRoom.trim().replace(/[^a-zA-Z0-9_-]/g, '');
         var newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + cleanRoom;
@@ -317,60 +321,65 @@
       var link = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + currentRoomId;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link).then(function() {
-          alert('已複製分享連結！直接傳到 LINE，大家點開就是同一個房間！');
+          alert('已複製此團購專屬連結！\n不管今天點、明天收單，大家點開都是同一張單！');
         }).catch(function() {
-          prompt('請複製此房間網址傳給同事：', link);
+          prompt('請複製此專屬網址傳給同事：', link);
         });
       } else {
-        prompt('請複製此房間網址傳給同事：', link);
+        prompt('請複製此專屬網址傳給同事：', link);
       }
     }
 
     // ==========================================
-    // 雲端資料同步核心 (免設定、無 CORS 限制)
+    // 雲端同步機制 (跨日不遺失)
     // ==========================================
     function fetchRoomOrders() {
-      if (isUpdating) return;
+      if (isUpdating || !currentRoomId) return;
 
-      var key = 'bf_data_' + currentRoomId;
-      fetch('https://api.allorigins.win/get?url=' + encodeURIComponent('https://api.myjson.online/v1/records/' + key), {
-        cache: 'no-cache'
+      fetch(KV_API_BASE + currentRoomId, { cache: 'no-cache' })
+      .then(function(res) {
+        if (res.status === 404) return []; // 房間剛建立尚無資料
+        if (!res.ok) throw new Error('狀態非 200');
+        return res.json();
       })
-      .then(function(res) { return res.json(); })
       .then(function(data) {
-        if (data && data.contents) {
-          var parsed = JSON.parse(data.contents);
-          if (parsed && Array.isArray(parsed.data)) {
-            orders = parsed.data;
-            updateBadge();
-            renderColleagueList();
-            renderSummaryView();
-          }
+        if (Array.isArray(data)) {
+          orders = data;
+          updateBadge();
+          renderColleagueList();
+          renderSummaryView();
         }
-        document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 雲端連線中 (即時同步)';
+        document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 雲端連線中 (跨日同步)';
       })
       .catch(function() {
-        // Fallback 到本機備援，確保操作不卡住
-        document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span> 本地連線模式 (同步中)';
+        document.getElementById('cloud-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span> 連線同步中...';
       });
     }
 
     function pushOrders(callback) {
+      if (!currentRoomId) return;
+
       isUpdating = true;
       var statusElem = document.getElementById('cloud-status');
-      statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> 正在儲存...';
+      statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> 正在儲存至雲端...';
 
-      // 本地先行保存防丟失
-      try {
-        localStorage.setItem('bf_cached_' + currentRoomId, JSON.stringify(orders));
-      } catch(e) {}
-
-      // 非同步發送更新
-      setTimeout(function() {
+      fetch(KV_API_BASE + currentRoomId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orders)
+      })
+      .then(function(res) {
+        if (!res.ok) throw new Error('上傳失敗');
         isUpdating = false;
-        statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> 已更新';
+        statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> 同步成功';
         if (callback) callback();
-      }, 300);
+      })
+      .catch(function(err) {
+        isUpdating = false;
+        console.error(err);
+        alert('雲端更新失敗，請檢查網路！');
+        statusElem.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> 同步失敗';
+      });
     }
 
     function manualSync() {
@@ -554,14 +563,17 @@
         return acc + (Number(it.price) || 0) * (it.quantity || 1);
       }, 0);
 
-      var timeStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+      // 包含登記日期與時間，即使跨日也能清楚辨識
+      var now = new Date();
+      var dateStr = (now.getMonth() + 1) + '/' + now.getDate();
+      var timeStr = now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
 
       var newRecord = {
         id: editingOrderId || ('ord_' + Date.now()),
         userName: colleagueName,
         items: JSON.parse(JSON.stringify(currentCart)),
         totalPrice: userTotal,
-        time: timeStr
+        time: dateStr + ' ' + timeStr
       };
 
       if (editingOrderId) {
@@ -575,7 +587,7 @@
       }
 
       pushOrders(function() {
-        alert('已成功登記！已同步至房間清單');
+        alert('已成功登記！餐點已即時同步至房間清單');
         switchTab('list');
       });
     }
@@ -812,13 +824,13 @@
         alert('目前房間本來就沒有任何訂單！');
         return;
       }
-      if (confirm('確定要清空今天房間內的所有訂單嗎？此動作將同步清除所有人的畫面！')) {
+      if (confirm('確定要清空此房間內的所有訂單嗎？（通常在今天早餐已結單送出後執行）')) {
         orders = [];
         pushOrders(function() {
           renderColleagueList();
           renderSummaryView();
           updateBadge();
-          alert('已清空房間所有訂單');
+          alert('已成功清空房間所有訂單，可以開始下一輪訂購！');
         });
       }
     }
@@ -858,18 +870,18 @@
       presets.push({ id: Date.now().toString(), name: name, price: isNaN(price) ? 0 : price });
       nameInput.value = '';
       priceInput.value = '';
-      try { localStorage.setItem('bf_presets_v6', JSON.stringify(presets)); } catch(e) {}
+      try { localStorage.setItem('bf_presets_v7', JSON.stringify(presets)); } catch(e) {}
       renderPresetSettingsList();
     }
     function deletePresetItem(index) {
       presets.splice(index, 1);
-      try { localStorage.setItem('bf_presets_v6', JSON.stringify(presets)); } catch(e) {}
+      try { localStorage.setItem('bf_presets_v7', JSON.stringify(presets)); } catch(e) {}
       renderPresetSettingsList();
     }
     function resetDefaultPresets() {
       if (confirm('確定重置推薦菜單為預設狀態嗎？')) {
         presets = DEFAULT_PRESETS.slice();
-        try { localStorage.setItem('bf_presets_v6', JSON.stringify(presets)); } catch(e) {}
+        try { localStorage.setItem('bf_presets_v7', JSON.stringify(presets)); } catch(e) {}
         renderPresetSettingsList();
         alert('已重設為預設菜單');
       }
